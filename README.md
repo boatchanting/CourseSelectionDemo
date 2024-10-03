@@ -73,6 +73,15 @@ course_id,course_name,teacher_name,capacity,selected_count
 - `capacity`: Course capacity.
 - `selected_count`: Current number of enrolled students.
 
+
+
+### Course Selection Mechanism
+
+- Each time a user selects a course, the system will randomly determine whether the selection is successful with a 20% success probability.
+- When a course is full, the selection will automatically fail.
+- After a successful selection, the `selected_count` in the CSV file will be updated in real-time.
+
+
 # 测试选课系统
 
 ## 简介
@@ -155,9 +164,3 @@ course_id,course_name,teacher_name,capacity,selected_count
 - 成功选课后，CSV 文件中的 `selected_count` 会实时更新。
 
 
-
-### Course Selection Mechanism
-
-- Each time a user selects a course, the system will randomly determine whether the selection is successful with a 20% success probability.
-- When a course is full, the selection will automatically fail.
-- After a successful selection, the `selected_count` in the CSV file will be updated in real-time.
