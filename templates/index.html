@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>选课系统</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        /* 美化选择框 */
+        .select-box {
+            height: 300px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #ced4da;
+            border-radius: 0.375rem;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        }
+
+        /* 美化按钮 */
+        #save-courses-btn, .drop-course-btn {
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        /* 调整按钮尺寸 */
+        #save-courses-btn {
+            width: 100%;
+            padding: 10px;
+            font-size: 1.25rem;
+        }
+
+        .drop-course-btn {
+            font-size: 0.875rem;
+            padding: 5px 10px;
+        }
+
+        /* 美化我的课程列表 */
+        #my-courses li {
+            margin-bottom: 10px;
+            background-color: #fff;
+            border: 1px solid #ced4da;
+            border-radius: 0.375rem;
+            padding: 10px 15px;
+            box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* 增加标题之间的间距 */
+        h3 {
+            margin-top: 30px;
+            margin-bottom: 20px;
+        }
+
+        /* 美化头部 */
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="display-4">选课系统</h1>
+        <div class="row">
+            <div class="col-md-3">
+                <h3>课程种类</h3>
+                <select id="course-select" class="form-select select-box" size="10">
+                    {% for course in courses %}
+                    <option value="{{ course.id }}">{{ course.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-9">
+                <h3>教师选择</h3>
+                <select id="teacher-select" class="form-select select-box" size="10">
+                    <!-- 教师选项将由JavaScript根据所选课程动态填充 -->
+                </select>
+            </div>
+        </div>
+        
+        <!-- 保存课程按钮 -->
+        <button class="btn btn-success btn-lg" id="save-courses-btn">保存课程</button>
+
+        <!-- 我的课程 -->
+        <h3>我的课程</h3>
+        <ul id="my-courses" class="list-group">
+            <!-- 用户已选课程列表将显示在这里 -->
+        </ul>
+    </div>
+
+    <!-- Bootstrap Modal for Alert -->
+    <div class="modal fade" id="alertModal" tabindex="-1" aria-labelledby="alertModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="alertModalLabel">选课提示</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body" id="modalMessage">
+            <!-- 提示信息将在这里显示 -->
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function(){
+            // 将 courses 数据重命名为 courseData，避免变量冲突
+            let courseData = {{ courses | tojson }};
+            
+            // 当选择课程时，更新右侧教师列表
+            $('#course-select').change(function() {
+                let selectedCourseId = $(this).val();
+                let selectedCourse = courseData.find(course => course.id == selectedCourseId);
+                
+                // 清空教师选择框
+                $('#teacher-select').empty();
+
+                // 填充教师选择框
+                if (selectedCourse) {
+                    selectedCourse.teachers.forEach(function(teacher) {
+                        $('#teacher-select').append(
+                            `<option value="${teacher.name}">${teacher.name} (容量: ${teacher.capacity}, 已选: ${teacher.selected_count})</option>`
+                        );
+                    });
+                }
+            });
+
+            // 保存课程按钮点击事件
+            $('#save-courses-btn').click(function() {
+                let selectedCourseId = $('#course-select').val();
+                let selectedTeacherName = $('#teacher-select').val();
+
+                if (!selectedCourseId || !selectedTeacherName) {
+                    $('#modalMessage').text('请选择课程和教师！');
+                    var alertModal = new bootstrap.Modal(document.getElementById('alertModal'));
+                    alertModal.show();
+                    return;
+                }
+
+                // 发送选课请求
+                $.ajax({
+                    url: '/select_course',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        course_id: selectedCourseId,
+                        teacher_name: selectedTeacherName
+                    }),
+                    success: function(response) {
+                        $('#modalMessage').text(response.message);
+                        var alertModal = new bootstrap.Modal(document.getElementById('alertModal'));
+                        alertModal.show();
+
+                        if (response.success) {
+                            // 更新我的课程
+                            updateMyCourses(response.selected_courses);
+
+                            // 更新右侧教师列表中的已选人数
+                            let selectedOption = $('#teacher-select option:selected');
+                            let currentCount = parseInt(selectedOption.text().match(/已选: (\d+)/)[1]);
+                            let capacity = parseInt(selectedOption.text().match(/容量: (\d+)/)[1]);
+
+                            // 更新教师的已选人数
+                            selectedOption.text(`${selectedTeacherName} (容量: ${capacity}, 已选: ${currentCount + 1})`);
+
+                            // 如果人数已满，禁用该选项
+                            if (currentCount + 1 >= capacity) {
+                                selectedOption.prop('disabled', true);
+                            }
+                        }
+                    }
+                });
+            });
+
+            // 退课功能
+            function dropCourse(courseId, teacherName) {
+                $.ajax({
+                    url: '/drop_course',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        course_id: courseId,
+                        teacher_name: teacherName
+                    }),
+                    success: function(response) {
+                        $('#modalMessage').text(response.message);
+                        var alertModal = new bootstrap.Modal(document.getElementById('alertModal'));
+                        alertModal.show();
+
+                        if (response.success) {
+                            // 更新我的课程
+                            updateMyCourses(response.selected_courses);
+                        }
+                    }
+                });
+            }
+
+            // 更新我的课程显示
+            function updateMyCourses(courses) {
+                $('#my-courses').empty();
+                courses.forEach(function(course) {
+                    $('#my-courses').append(
+                        `<li class="list-group-item">${course.course_name} - ${course.teacher_name} <button class="btn btn-danger btn-sm float-end drop-course-btn" data-course-id="${course.course_id}" data-teacher-name="${course.teacher_name}">退课</button></li>`
+                    );
+                });
+
+                // 绑定退课按钮事件
+                $('.drop-course-btn').click(function() {
+                    let courseId = $(this).data('course-id');
+                    let teacherName = $(this).data('teacher-name');
+                    dropCourse(courseId, teacherName);
+                });
+            }
+
+            // 页面加载时获取用户已选的课程
+            $.ajax({
+                url: '/get_selected_courses',
+                type: 'GET',
+                success: function(response) {
+                    updateMyCourses(response);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
